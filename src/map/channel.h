@@ -2,7 +2,7 @@
  * This file is part of Hercules.
  * http://herc.ws - http://github.com/HerculesWS/Hercules
  *
- * Copyright (C) 2013-2015  Hercules Dev Team
+ * Copyright (C) 2013-2020 Hercules Dev Team
  *
  * Hercules is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -75,6 +75,7 @@ struct Channel_Config {
 	char irc_server[40], irc_channel[50], irc_nick[40], irc_nick_pw[30];
 	unsigned short irc_server_port;
 	bool irc_use_ghost;
+	int channel_opt_msg_delay;
 };
 
 struct channel_ban_entry {

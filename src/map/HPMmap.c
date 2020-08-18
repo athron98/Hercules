@@ -2,7 +2,7 @@
  * This file is part of Hercules.
  * http://herc.ws - http://github.com/HerculesWS/Hercules
  *
- * Copyright (C) 2013-2015  Hercules Dev Team
+ * Copyright (C) 2013-2020 Hercules Dev Team
  *
  * Hercules is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -38,6 +38,7 @@
 #include "common/mapindex.h"
 #include "common/mmo.h"
 #include "common/nullpo.h"
+#include "common/packets.h"
 #include "common/random.h"
 #include "common/showmsg.h"
 #include "common/socket.h"
@@ -73,7 +74,6 @@
 #include "map/mercenary.h"
 #include "map/mob.h"
 #include "map/npc.h"
-#include "map/packets_struct.h"
 #include "map/party.h"
 #include "map/path.h"
 #include "map/pc.h"
@@ -81,11 +81,14 @@
 #include "map/pet.h"
 #include "map/quest.h"
 #include "map/rodex.h"
+#include "map/refine.h"
+#include "map/refine.p.h"
 #include "map/script.h"
 #include "map/searchstore.h"
 #include "map/skill.h"
 #include "map/status.h"
 #include "map/storage.h"
+#include "map/stylist.h"
 #include "map/trade.h"
 #include "map/unit.h"
 #include "map/vending.h"

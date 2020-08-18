@@ -2,8 +2,8 @@
  * This file is part of Hercules.
  * http://herc.ws - http://github.com/HerculesWS/Hercules
  *
- * Copyright (C) 2012-2018  Hercules Dev Team
- * Copyright (C)  Athena Dev Teams
+ * Copyright (C) 2012-2020 Hercules Dev Team
+ * Copyright (C) Athena Dev Teams
  *
  * Hercules is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,10 +49,13 @@
 /**
  * Path within the /db folder to (non-)renewal specific db files
  **/
+#define DBPATH_RE "re/"
+#define DBPATH_PRE "pre-re/"
+
 #ifdef RENEWAL
-	#define DBPATH "re/"
+	#define DBPATH DBPATH_RE
 #else
-	#define DBPATH "pre-re/"
+	#define DBPATH DBPATH_PRE
 #endif
 
 /**
@@ -112,11 +115,6 @@
 		if( (varcast_r += (val)) != 0 && varcast_r >= 0 ) \
 			time = time * (1 - (float)min((val), 100) / 100); \
 	} while(0)
-#endif
-
-/* console_input doesn't go well with minicore */
-#ifdef MINICORE
-	#undef CONSOLE_INPUT
 #endif
 
 /**

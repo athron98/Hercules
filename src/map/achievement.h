@@ -2,7 +2,7 @@
 * This file is part of Hercules.
 * http://herc.ws - http://github.com/HerculesWS/Hercules
 *
-* Copyright (C) 2018  Hercules Dev Team
+* Copyright (C) 2018-2020 Hercules Dev Team
 * Copyright (C) Smokexyz
 *
 * Hercules is free software: you can redistribute it and/or modify
@@ -277,7 +277,9 @@ struct achievement_interface {
 	/* */
 	void (*init_titles) (struct map_session_data *sd);
 	bool (*check_title) (struct map_session_data *sd, int title_id);
-	void (*get_rewards) (struct map_session_data *sd, const struct achievement_data *ad);
+	bool (*get_rewards) (struct map_session_data *sd, const struct achievement_data *ad);
+	void (*get_rewards_buffs) (struct map_session_data *sd, const struct achievement_data *ad);
+	void (*get_rewards_items) (struct map_session_data *sd, const struct achievement_data *ad);
 };
 
 #ifdef HERCULES_CORE

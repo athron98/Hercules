@@ -2,7 +2,7 @@
  * This file is part of Hercules.
  * http://herc.ws - http://github.com/HerculesWS/Hercules
  *
- * Copyright (C) 2013-2015  Hercules Dev Team
+ * Copyright (C) 2013-2020 Hercules Dev Team
  *
  * Hercules is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -65,11 +65,17 @@ struct {
 bool itemdb2sql_torun = false;
 /// Whether the mob_db converter will automatically run.
 bool mobdb2sql_torun = false;
+/// mysql handle for escape strings
+static struct Sql *sql_handle = NULL;
 
 /// Backup of the original item_db parser function pointer.
 int (*itemdb_readdb_libconfig_sub) (struct config_setting_t *it, int n, const char *source);
 /// Backup of the original mob_db parser function pointer.
 int (*mob_read_db_sub) (struct config_setting_t *it, int n, const char *source);
+bool (*mob_skill_db_libconfig_sub_skill) (struct config_setting_t *it, int n, int mob_id);
+
+//
+void do_mobskilldb2sql(void);
 
 /**
  * Normalizes and appends a string to the output buffer.
@@ -100,7 +106,7 @@ void db2sql_fileheader(void)
 			"-- This file is part of Hercules.\n"
 			"-- http://herc.ws - http://github.com/HerculesWS/Hercules\n"
 			"--\n"
-			"-- Copyright (C) 2013-%d  Hercules Dev Team\n"
+			"-- Copyright (C) 2013-%d Hercules Dev Team\n"
 			"--\n"
 			"-- Hercules is free software: you can redistribute it and/or modify\n"
 			"-- it under the terms of the GNU General Public License as published by\n"
@@ -245,11 +251,11 @@ int itemdb2sql_sub(struct config_setting_t *entry, int n, const char *source)
 		StrBuf->Printf(&buf, "'%u',", (uint32)it->nameid);
 
 		// name_english
-		SQL->EscapeString(NULL, e_name, it->name);
+		SQL->EscapeString(sql_handle, e_name, it->name);
 		StrBuf->Printf(&buf, "'%s',", e_name);
 
 		// name_japanese
-		SQL->EscapeString(NULL, e_name, it->jname);
+		SQL->EscapeString(sql_handle, e_name, it->jname);
 		StrBuf->Printf(&buf, "'%s',", e_name);
 
 		// type
@@ -393,7 +399,7 @@ int itemdb2sql_sub(struct config_setting_t *entry, int n, const char *source)
 				tosql.buf[0].len = tosql.buf[0].len + strlen(str) + 1000;
 				RECREATE(tosql.buf[0].p,char,tosql.buf[0].len);
 			}
-			SQL->EscapeString(NULL, tosql.buf[0].p, str);
+			SQL->EscapeString(sql_handle, tosql.buf[0].p, str);
 			StrBuf->Printf(&buf, "'%s',", tosql.buf[0].p);
 		} else {
 			StrBuf->AppendStr(&buf, "'',");
@@ -407,7 +413,7 @@ int itemdb2sql_sub(struct config_setting_t *entry, int n, const char *source)
 				tosql.buf[1].len = tosql.buf[1].len + strlen(str) + 1000;
 				RECREATE(tosql.buf[1].p,char,tosql.buf[1].len);
 			}
-			SQL->EscapeString(NULL, tosql.buf[1].p, str);
+			SQL->EscapeString(sql_handle, tosql.buf[1].p, str);
 			StrBuf->Printf(&buf, "'%s',", tosql.buf[1].p);
 		} else {
 			StrBuf->AppendStr(&buf, "'',");
@@ -421,7 +427,7 @@ int itemdb2sql_sub(struct config_setting_t *entry, int n, const char *source)
 				tosql.buf[2].len = tosql.buf[2].len + strlen(str) + 1000;
 				RECREATE(tosql.buf[2].p,char,tosql.buf[2].len);
 			}
-			SQL->EscapeString(NULL, tosql.buf[2].p, str);
+			SQL->EscapeString(sql_handle, tosql.buf[2].p, str);
 			StrBuf->Printf(&buf, "'%s'", tosql.buf[2].p);
 		} else {
 			StrBuf->AppendStr(&buf, "''");
@@ -559,15 +565,15 @@ int mobdb2sql_sub(struct config_setting_t *mobt, int n, const char *source)
 		StrBuf->Printf(&buf, "%d,", md->mob_id);
 
 		// Sprite
-		SQL->EscapeString(NULL, e_name, md->sprite);
+		SQL->EscapeString(sql_handle, e_name, md->sprite);
 		StrBuf->Printf(&buf, "'%s',", e_name);
 
 		// kName
-		SQL->EscapeString(NULL, e_name, md->name);
+		SQL->EscapeString(sql_handle, e_name, md->name);
 		StrBuf->Printf(&buf, "'%s',", e_name);
 
 		// iName
-		SQL->EscapeString(NULL, e_name, md->jname);
+		SQL->EscapeString(sql_handle, e_name, md->jname);
 		StrBuf->Printf(&buf, "'%s',", e_name);
 
 		// LV
@@ -811,6 +817,332 @@ void do_mobdb2sql(void)
 		if (tosql.buf[i].p)
 			aFree(tosql.buf[i].p);
 	}
+
+	// Run mob_skill_db converter
+	do_mobskilldb2sql();
+}
+
+/**
+ * Converts Mob Skill State constant to string
+ */
+const char* mob_skill_state_tostring(enum MobSkillState mss)
+{
+	switch(mss) {
+	case MSS_ANY:
+		return "any";
+	case MSS_IDLE:
+		return "idle";
+	case MSS_WALK:
+		return "walk";
+	case MSS_LOOT:
+		return "loot";
+	case MSS_DEAD:
+		return "dead";
+	case MSS_BERSERK:
+		return "attack";
+	case MSS_ANGRY:
+		return "angry";
+	case MSS_RUSH:
+		return "chase";
+	case MSS_FOLLOW:
+		return "follow";
+	case MSS_ANYTARGET:
+		return "anytarget";
+	}
+
+	return "unknown";
+}
+
+/**
+ * Converts Mob Skill Target constant to string
+ */
+const char* mob_skill_target_tostring(int target)
+{
+	switch(target) {
+	case MST_TARGET:
+		return "target";
+	case MST_RANDOM:
+		return "randomtarget";
+	case MST_SELF:
+		return "self";
+	case MST_FRIEND:
+		return "friend";
+	case MST_MASTER:
+		return "master";
+	case MST_AROUND1:
+		return "around1";
+	case MST_AROUND2:
+		return "around2";
+	case MST_AROUND3:
+		return "around3";
+	//case MST_AROUND: // same value as MST_AROUND4
+	case MST_AROUND4:
+		return "around4";
+	case MST_AROUND5:
+		return "around5";
+	case MST_AROUND6:
+		return "around6";
+	case MST_AROUND7:
+		return "around7";
+	case MST_AROUND8:
+		return "around8";
+	}
+	return "unknown";
+}
+
+/**
+ * Converts Mob Skill Condition constant to string
+ */
+const char* mob_skill_condition_tostring(int condition)
+{
+	switch(condition) {
+	case MSC_ALWAYS:
+		return "always";
+	case MSC_MYHPLTMAXRATE:
+		return "myhpltmaxrate";
+	case MSC_MYHPINRATE:
+		return "myhpinrate";
+	case MSC_FRIENDHPLTMAXRATE:
+		return "friendhpltmaxrate";
+	case MSC_FRIENDHPINRATE:
+		return "friendhpinrate";
+	case MSC_MYSTATUSON:
+		return "mystatuson";
+	case MSC_MYSTATUSOFF:
+		return "mystatusoff";
+	case MSC_FRIENDSTATUSON:
+		return "friendstatuson";
+	case MSC_FRIENDSTATUSOFF:
+		return "friendstatusoff";
+	case MSC_ATTACKPCGT:
+		return "attackpcgt";
+	case MSC_ATTACKPCGE:
+		return "attackpcge";
+	case MSC_SLAVELT:
+		return "slavelt";
+	case MSC_SLAVELE:
+		return "slavele";
+	case MSC_CLOSEDATTACKED:
+		return "closedattacked";
+	case MSC_LONGRANGEATTACKED:
+		return "longrangeattacked";
+	case MSC_AFTERSKILL:
+		return "afterskill";
+	case MSC_SKILLUSED:
+		return "skillused";
+	case MSC_CASTTARGETED:
+		return "casttargeted";
+	case MSC_RUDEATTACKED:
+		return "rudeattacked";
+	case MSC_MASTERHPLTMAXRATE:
+		return "masterhpltmaxrate";
+	case MSC_MASTERATTACKED:
+		return "masterattacked";
+	case MSC_ALCHEMIST:
+		return "alchemist";
+	case MSC_SPAWN:
+		return "onspawn";
+	}
+	return "unknown";
+}
+
+/**
+ * Converts a Mob Skill DB entry to SQL.
+ *
+ * @see mob_skill_db_libconfig_sub_skill.
+ */
+bool mobskilldb2sql_sub(struct config_setting_t *it, int n, int mob_id)
+{
+	int i32 = 0, i;
+	StringBuf buf;
+	struct mob_db *md = mob->db(mob_id);
+	char valname[15];
+	const char *name = config_setting_name(it);
+	char e_name[NAME_LENGTH*2+1];
+
+	nullpo_retr(false, it);
+	Assert_retr(false, mob_id <= 0 || md != mob->dummy);
+
+	StrBuf->Init(&buf);
+
+	// MonsterID
+	StrBuf->Printf(&buf, "%d,", mob_id);
+
+	// Info
+	SQL->EscapeString(sql_handle, e_name, md->name);
+	StrBuf->Printf(&buf, "'%s@%s',", e_name, name);
+
+	if (mob->lookup_const(it, "SkillState", &i32) && (i32 < MSS_ANY || i32 > MSS_ANYTARGET)) {
+		ShowWarning("mob_skill_db_libconfig_sub_skill: Invalid skill state %d for skill '%s' in monster %d, defaulting to MSS_ANY.\n", i32, name, mob_id);
+		i32 = MSS_ANY;
+	}
+	// State
+	StrBuf->Printf(&buf, "'%s',", mob_skill_state_tostring(i32));
+
+	// SkillID
+	if (!(i32 = skill->name2id(name))) {
+		ShowWarning("mob_skill_db_libconfig_sub_skill: Non existant skill id %d in monster %d, skipping.\n", i32, mob_id);
+		return false;
+	}
+	StrBuf->Printf(&buf, "%d,", i32);
+
+	// SkillLv
+	if (!libconfig->setting_lookup_int(it, "SkillLevel", &i32) || i32 <= 0)
+		i32 = 1;
+	StrBuf->Printf(&buf, "%d,", i32);
+
+	// Rate
+	i32 = 0;
+	libconfig->setting_lookup_int(it, "Rate", &i32);
+	StrBuf->Printf(&buf, "%d,", i32);
+
+	// CastTime
+	i32 = 0;
+	libconfig->setting_lookup_int(it, "CastTime", &i32);
+	StrBuf->Printf(&buf, "%d,", i32);
+
+	// Delay
+	i32 = 0;
+	libconfig->setting_lookup_int(it, "Delay", &i32);
+	StrBuf->Printf(&buf, "%d,", i32);
+
+	// Cancelable
+	if (libconfig->setting_lookup_bool(it, "Cancelable", &i32)) {
+		StrBuf->Printf(&buf, "'%s',", ((i32 == 0) ? "no" : "yes"));
+	} else {
+		StrBuf->Printf(&buf, "'no',");
+	}
+
+	// Target
+	if (mob->lookup_const(it, "SkillTarget", &i32) && (i32 < MST_TARGET || i32 > MST_AROUND)) {
+		i32 = MST_TARGET;
+	}
+	StrBuf->Printf(&buf, "'%s',", mob_skill_target_tostring(i32));
+
+	// Condition
+	if (mob->lookup_const(it, "CastCondition", &i32) && (i32 < MSC_ALWAYS || i32 > MSC_SPAWN)) {
+		i32 = MSC_ALWAYS;
+	}
+	StrBuf->Printf(&buf, "'%s',", mob_skill_condition_tostring(i32));
+
+	// ConditionValue
+	i32 = 0;
+	if (mob->lookup_const(it, "ConditionData", &i32)) {
+		StrBuf->Printf(&buf, "'%d',", i32);
+	} else {
+		StrBuf->Printf(&buf, "NULL,");
+	}
+
+	// Val1-Val5
+	for (i = 0; i < 5; i++) {
+		sprintf(valname, "val%1d", i);
+		if (libconfig->setting_lookup_int(it, valname, &i32)) {
+			StrBuf->Printf(&buf, "%d,", i32);
+		} else {
+			StrBuf->Printf(&buf, "NULL,");
+		}
+	}
+
+	// Emotion
+	if (libconfig->setting_lookup_int(it, "Emotion", &i32)) {
+		StrBuf->Printf(&buf, "'%d',", i32);
+	} else {
+		StrBuf->Printf(&buf, "NULL,");
+	}
+
+	if (libconfig->setting_lookup_int(it, "ChatMsgID", &i32) && i32 > 0 && i32 <= MAX_MOB_CHAT) {
+		StrBuf->Printf(&buf, "'%d'", i32);
+	} else {
+		StrBuf->Printf(&buf, "NULL");
+	}
+
+	fprintf(tosql.fp, "REPLACE INTO `%s` VALUES (%s);\n", tosql.db_name, StrBuf->Value(&buf));
+
+	StrBuf->Destroy(&buf);
+
+	return true;
+
+}
+
+
+/**
+ * Prints a SQL table header for the current mob_skill_db table.
+ */
+void mobskilldb2sql_tableheader(void)
+{
+	db2sql_fileheader();
+
+	fprintf(tosql.fp,
+			"--\n"
+			"-- Table structure for table `%s`\n"
+			"--\n"
+			"\n"
+			"DROP TABLE IF EXISTS `%s`;\n"
+			"CREATE TABLE `%s` (\n"
+			"  `MOB_ID` SMALLINT(6) NOT NULL,\n"
+			"  `INFO` TEXT NOT NULL,\n"
+			"  `STATE` TEXT NOT NULL,\n"
+			"  `SKILL_ID` SMALLINT(6) NOT NULL,\n"
+			"  `SKILL_LV` TINYINT(4) NOT NULL,\n"
+			"  `RATE` SMALLINT(4) NOT NULL,\n"
+			"  `CASTTIME` MEDIUMINT(9) NOT NULL,\n"
+			"  `DELAY` INT(9) NOT NULL,\n"
+			"  `CANCELABLE` TEXT NOT NULL,\n"
+			"  `TARGET` TEXT NOT NULL,\n"
+			"  `CONDITION` TEXT NOT NULL,\n"
+			"  `CONDITION_VALUE` TEXT,\n"
+			"  `VAL1` INT(11) DEFAULT NULL,\n"
+			"  `VAL2` INT(11) DEFAULT NULL,\n"
+			"  `VAL3` INT(11) DEFAULT NULL,\n"
+			"  `VAL4` INT(11) DEFAULT NULL,\n"
+			"  `VAL5` INT(11) DEFAULT NULL,\n"
+			"  `EMOTION` TEXT,\n"
+			"  `CHAT` TEXT\n"
+			") ENGINE=MyISAM;\n"
+			"\n", tosql.db_name, tosql.db_name, tosql.db_name);
+}
+
+/**
+ * Mob Skill DB Conversion
+ */
+void do_mobskilldb2sql(void)
+{
+	int i;
+	struct convert_db_files {
+		const char *name;
+		const char *source;
+		const char *destination;
+	} files[] = {
+		{"mob_skill_db", DBPATH"mob_skill_db.conf", "sql-files/mob_skill_db" DBSUFFIX ".sql"},
+		{"mob_skill_db2", "mob_skill_db2.conf", "sql-files/mob_skill_db2.sql"},
+	};
+
+	/* link */
+	mob_skill_db_libconfig_sub_skill = mob->skill_db_libconfig_sub_skill;
+	mob->skill_db_libconfig_sub_skill = mobskilldb2sql_sub;
+
+	memset(&tosql.buf, 0, sizeof(tosql.buf));
+	for (i = 0; i < ARRAYLENGTH(files); i++) {
+		if ((tosql.fp = fopen(files[i].destination, "wt+")) == NULL) {
+			ShowError("do_mobskilldb2sql: File not found \"%s\".\n", files[i].destination);
+			return;
+		}
+
+		tosql.db_name = files[i].name;
+		mobskilldb2sql_tableheader();
+
+		mob->skill_db_libconfig(files[i].source, false);
+
+		fclose(tosql.fp);
+	}
+
+	/* unlink */
+	mob->skill_db_libconfig_sub_skill = mob_skill_db_libconfig_sub_skill;
+
+	for (i = 0; i < ARRAYLENGTH(tosql.buf); i++) {
+		if (tosql.buf[i].p)
+			aFree(tosql.buf[i].p);
+	}
 }
 
 /**
@@ -885,8 +1217,15 @@ HPExport void plugin_init(void)
 
 HPExport void server_online(void)
 {
+	sql_handle = SQL->Malloc();
 	if (itemdb2sql_torun)
 		do_itemdb2sql();
 	if (mobdb2sql_torun)
 		do_mobdb2sql();
+}
+
+HPExport void plugin_final (void)
+{
+	SQL->Free(sql_handle);
+	sql_handle = NULL;
 }

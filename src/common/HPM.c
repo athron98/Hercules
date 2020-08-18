@@ -2,7 +2,7 @@
  * This file is part of Hercules.
  * http://herc.ws - http://github.com/HerculesWS/Hercules
  *
- * Copyright (C) 2013-2018  Hercules Dev Team
+ * Copyright (C) 2013-2020 Hercules Dev Team
  *
  * Hercules is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@
 #include "common/memmgr.h"
 #include "common/mapindex.h"
 #include "common/mmo.h"
+#include "common/packets.h"
 #include "common/showmsg.h"
 #include "common/socket.h"
 #include "common/sql.h"
@@ -185,6 +186,10 @@ static bool hplugins_addpacket(unsigned short cmd, unsigned short length, void (
 	packet->cmd = cmd;
 	packet->len = length;
 	packet->receive = receive;
+
+	if (cmd <= MAX_PACKET_DB && cmd >= MIN_PACKET_DB) {
+		packets->db[cmd] = length;
+	}
 
 	return true;
 }
@@ -453,11 +458,12 @@ static bool hplugins_addconf(unsigned int pluginID, enum HPluginConfType type, c
 
 static struct hplugin *hplugin_load(const char *filename)
 {
+	typedef void *(ImportSymbolFunc)(char *, unsigned int);
 	struct hplugin *plugin;
 	struct hplugin_info *info;
 	struct HPMi_interface **HPMi;
 	bool anyEvent = false;
-	void **import_symbol_ref;
+	ImportSymbolFunc **import_symbol_ref;
 	int *HPMDataCheckVer;
 	unsigned int *HPMDataCheckLen;
 	struct s_HPMDataCheck *HPMDataCheck;
@@ -494,7 +500,7 @@ static struct hplugin *hplugin_load(const char *filename)
 	plugin->info = info;
 	plugin->filename = aStrdup(filename);
 
-	if( !( import_symbol_ref = plugin_import(plugin->dll, "import_symbol",void **) ) ) {
+	if ((import_symbol_ref = plugin_import(plugin->dll, "import_symbol", ImportSymbolFunc **)) == NULL) {
 		ShowFatalError("HPM:plugin_load: failed to retrieve 'import_symbol' for '"CL_WHITE"%s"CL_RESET"'!\n", filename);
 		exit(EXIT_FAILURE);
 	}

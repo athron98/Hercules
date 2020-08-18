@@ -2,7 +2,7 @@
  * This file is part of Hercules.
  * http://herc.ws - http://github.com/HerculesWS/Hercules
  *
- * Copyright (C) 2013-2018  Hercules Dev Team
+ * Copyright (C) 2013-2020 Hercules Dev Team
  *
  * Hercules is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -126,9 +126,13 @@ struct HookingPointData HookingPoints[] = {
 	{ HP_POP(lclif->p->parse_CA_LOGIN_HAN, HP_PRIV__lclif_parse_CA_LOGIN_HAN) },
 	{ HP_POP(lclif->p->parse_CA_SSO_LOGIN_REQ, HP_PRIV__lclif_parse_CA_SSO_LOGIN_REQ) },
 	{ HP_POP(lclif->p->parse_CA_LOGIN_OTP, HP_PRIV__lclif_parse_CA_LOGIN_OTP) },
+	{ HP_POP(lclif->p->parse_CA_ACK_MOBILE_OTP, HP_PRIV__lclif_parse_CA_ACK_MOBILE_OTP) },
+	{ HP_POP(lclif->p->parse_CA_OTP_CODE, HP_PRIV__lclif_parse_CA_OTP_CODE) },
 	{ HP_POP(lclif->p->parse_CA_REQ_HASH, HP_PRIV__lclif_parse_CA_REQ_HASH) },
 	{ HP_POP(lclif->p->parse_CA_CHARSERVERCONNECT, HP_PRIV__lclif_parse_CA_CHARSERVERCONNECT) },
 /* libconfig_interface */
+	{ HP_POP(libconfig->set_db_path, HP_libconfig_set_db_path) },
+	{ HP_POP(libconfig->format_db_path, HP_libconfig_format_db_path) },
 	{ HP_POP(libconfig->read, HP_libconfig_read) },
 	{ HP_POP(libconfig->write, HP_libconfig_write) },
 	{ HP_POP(libconfig->set_options, HP_libconfig_set_options) },
@@ -244,6 +248,7 @@ struct HookingPointData HookingPoints[] = {
 	{ HP_POP(login->auth_failed, HP_login_auth_failed) },
 	{ HP_POP(login->client_login, HP_login_client_login) },
 	{ HP_POP(login->client_login_otp, HP_login_client_login_otp) },
+	{ HP_POP(login->client_login_mobile_otp_request, HP_login_client_login_mobile_otp_request) },
 	{ HP_POP(login->char_server_connection_status, HP_login_char_server_connection_status) },
 	{ HP_POP(login->parse_request_connection, HP_login_parse_request_connection) },
 	{ HP_POP(login->config_set_defaults, HP_login_config_set_defaults) },
@@ -285,7 +290,14 @@ struct HookingPointData HookingPoints[] = {
 	{ HP_POP(mutex->cond_signal, HP_mutex_cond_signal) },
 	{ HP_POP(mutex->cond_broadcast, HP_mutex_cond_broadcast) },
 /* nullpo_interface */
+	{ HP_POP(nullpo->init, HP_nullpo_init) },
+	{ HP_POP(nullpo->final, HP_nullpo_final) },
 	{ HP_POP(nullpo->assert_report, HP_nullpo_assert_report) },
+/* packets_interface */
+	{ HP_POP(packets->init, HP_packets_init) },
+	{ HP_POP(packets->final, HP_packets_final) },
+	{ HP_POP(packets->addLens, HP_packets_addLens) },
+	{ HP_POP(packets->addLen, HP_packets_addLen) },
 /* rnd_interface */
 	{ HP_POP(rnd->init, HP_rnd_init) },
 	{ HP_POP(rnd->final, HP_rnd_final) },
@@ -310,12 +322,15 @@ struct HookingPointData HookingPoints[] = {
 	{ HP_POP(sockt->realloc_fifo, HP_sockt_realloc_fifo) },
 	{ HP_POP(sockt->realloc_writefifo, HP_sockt_realloc_writefifo) },
 	{ HP_POP(sockt->wfifoset, HP_sockt_wfifoset) },
+	{ HP_POP(sockt->wfifohead, HP_sockt_wfifohead) },
 	{ HP_POP(sockt->rfifoskip, HP_sockt_rfifoskip) },
 	{ HP_POP(sockt->close, HP_sockt_close) },
+	{ HP_POP(sockt->validateWfifo, HP_sockt_validateWfifo) },
 	{ HP_POP(sockt->session_is_valid, HP_sockt_session_is_valid) },
 	{ HP_POP(sockt->session_is_active, HP_sockt_session_is_active) },
 	{ HP_POP(sockt->flush, HP_sockt_flush) },
 	{ HP_POP(sockt->flush_fifos, HP_sockt_flush_fifos) },
+	{ HP_POP(sockt->connect_client, HP_sockt_connect_client) },
 	{ HP_POP(sockt->set_nonblocking, HP_sockt_set_nonblocking) },
 	{ HP_POP(sockt->set_defaultparse, HP_sockt_set_defaultparse) },
 	{ HP_POP(sockt->host2ip, HP_sockt_host2ip) },

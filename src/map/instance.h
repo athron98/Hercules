@@ -2,8 +2,8 @@
  * This file is part of Hercules.
  * http://herc.ws - http://github.com/HerculesWS/Hercules
  *
- * Copyright (C) 2012-2018  Hercules Dev Team
- * Copyright (C)  Athena Dev Teams
+ * Copyright (C) 2012-2020 Hercules Dev Team
+ * Copyright (C) Athena Dev Teams
  *
  * Hercules is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -96,6 +96,7 @@ struct instance_interface {
 	void (*set_timeout) (int instance_id, unsigned int progress_timeout, unsigned int idle_timeout);
 	bool (*valid) (int instance_id);
 	int (*destroy_timer) (int tid, int64 tick, int id, intptr_t data);
+	void (*force_destroy) (struct map_session_data *sd);
 };
 
 #ifdef HERCULES_CORE

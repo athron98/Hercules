@@ -9,8 +9,8 @@
 //= This file is part of Hercules.
 //= http://herc.ws - http://github.com/HerculesWS/Hercules
 //=
-//= Copyright (C) 2013-2017  Hercules Dev Team
-//= Copyright (C) 2013-2017  Haru
+//= Copyright (C) 2013-2020 Hercules Dev Team
+//= Copyright (C) 2013-2020 Haru
 //=
 //= Hercules is free software: you can redistribute it and/or modify
 //= it under the terms of the GNU General Public License as published by
@@ -116,11 +116,54 @@ function	script	F_TestVarOfAnotherNPC	{
 	end;
 }
 
+-	script	export test	FAKE_NPC,{
+
+	function OnInit {
+		// functions labels should not be able to be called as events
+		// if a regression occurs, this function could end up being called when
+		// Hercules processes OnInit event calls (issue #2137)
+
+		// NOTE: If script_config.functions_as_events is enabled (defaults: off)
+		//       and this this function is marked as public, it will trigger the
+		//       warning and fail the unit test regardless.
+
+		$@something_bad_happened[0] = true;
+		end;
+	}
+
+	private function Private {
+		// function explicitly marked as private
+		return;
+	}
+
+	public function Public {
+		// this is for testing public local functions and ownership of the
+		// script
+
+		return getnpcid();
+	}
+
+	public function RefTest {
+		// this is to check if references are passed around properly
+
+		return set(getarg(0), 1337);
+	}
+}
+
 function	script	HerculesSelfTestHelper	{
 	if (.once > 0)
 		return .errors;
 	.once = 1;
 	.errors = 0;
+
+	// number literals
+	callsub(OnCheck, "decimal number literal", 255, 255);
+	callsub(OnCheck, "hexadecimal number literal", 0xFF, 255);
+	callsub(OnCheck, "octal number literal", 0o377, 255);
+	callsub(OnCheck, "binary number literal", 0b11111111, 255);
+	callsub(OnCheck, "binary literal bitwise OR", 0b11110000 | 0xF, 255);
+	callsub(OnCheck, "decimal literal with separator", 2_5_5, 255);
+	callsub(OnCheck, "binary literal with separator", 0b_1111_1111, 255);
 
 	// Callsub (basic)
 	callsub(OnCheck, "Callsub", 1, 1);
@@ -651,6 +694,12 @@ function	script	HerculesSelfTestHelper	{
 	setd(".@x", getd(".@y"));
 	callsub(OnCheck, "setd getd", .@x, .@y);
 
+	// getd types
+	callsub(OnCheck, "Getdatatype (getd: param)",          getdatatype(getd("Hp")), DATATYPE_INT | DATATYPE_PARAM);
+	callsub(OnCheck, "Getdatatype (getd: const)",          getdatatype(getd("DATATYPE_CONST")), DATATYPE_INT | DATATYPE_CONST);
+	callsub(OnCheck, "Getdatatype (getd: numeric var)",    getdatatype(getd(".@foo")), DATATYPE_INT | DATATYPE_VAR);
+	callsub(OnCheck, "Getdatatype (getd: string var)",     getdatatype(getd(".@foo$")), DATATYPE_STR | DATATYPE_VAR);
+
 	// getvariableofnpc
 	.x = 2;
 	set getvariableofnpc(.x, "TestVarOfAnotherNPC"), 1;
@@ -769,11 +818,27 @@ function	script	HerculesSelfTestHelper	{
 	callsub(OnCheck, "Getdatatype (getarg integer value)", callsub(OnTestGetdatatype, 5), DATATYPE_INT);
 	callsub(OnCheck, "Getdatatype (getarg string)",        callsub(OnTestGetdatatype, "foo"), DATATYPE_STR | DATATYPE_CONST);
 
+	callsub(OnCheck, "data_to_string (NIL)",              data_to_string(), "");
+	callsub(OnCheck, "data_to_string (empty string)",     data_to_string(""), "");
+	callsub(OnCheck, "data_to_string (string)",           data_to_string("foo"), "foo");
+	callsub(OnCheck, "data_to_string (integer)",          data_to_string(5), "5");
+	callsub(OnCheck, "data_to_string (parameter)",        data_to_string(Hp), "Hp");
+	callsub(OnCheck, "data_to_string (constant)",         data_to_string(DATATYPE_CONST), "DATATYPE_CONST");
+	callsub(OnCheck, "data_to_string (label)",            data_to_string(OnTestGetdatatype), "OnTestGetdatatype");
+	callsub(OnCheck, "data_to_string (string variable)",  data_to_string(.@x$), ".@x$");
+	callsub(OnCheck, "data_to_string (integer variable)", data_to_string(.@x), ".@x");
+
+	"export test"::RefTest(.@refTest = 69);
+	callsub(OnCheck, "function as event (regression)",           $@something_bad_happened[0], false);
+	callsub(OnCheck, "public local function ownership",          "export test"::Public(), getnpcid());
+	callsub(OnCheck, "public local function var reference test", .@refTest, 1337);
+	callsub(OnCheck, "programatic public local call",            callfunctionofnpc("export test", "RefTest", .@refTest = 1), 1337);
+
 	if (.errors) {
-		debugmes "Script engine self-test   [ \033[0;31mFAILED\033[0m ]";
-		debugmes "**** The test was completed with " + .errors + " errors. ****";
+		consolemes(CONSOLEMES_DEBUG, "Script engine self-test   [ \033[0;31mFAILED\033[0m ]");
+		consolemes(CONSOLEMES_DEBUG, "**** The test was completed with " + .errors + " errors. ****");
 	} else {
-		debugmes "Script engine self-test   [ \033[0;32mPASSED\033[0m ]";
+		consolemes(CONSOLEMES_DEBUG, "Script engine self-test   [ \033[0;32mPASSED\033[0m ]");
 	}
 	return .errors;
 	end;
@@ -824,8 +889,8 @@ OnReportError:
 	.@val$ = getarg(1,"");
 	.@ref$ = getarg(2,"");
 	if (.errors == 1)
-		debugmes "**** WARNING: Any self-test results past this point are unreliable because of previous errors. ****";
-	debugmes "Error: "+.@msg$+": '"+.@val$+"' (found) != '"+.@ref$+"' (expected)";
+		consolemes(CONSOLEMES_DEBUG, "**** WARNING: Any self-test results past this point are unreliable because of previous errors. ****");
+	consolemes(CONSOLEMES_DEBUG, "Error: "+.@msg$+": '"+.@val$+"' (found) != '"+.@ref$+"' (expected)");
 	++.errors;
 	//end;
 	return;

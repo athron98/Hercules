@@ -2,8 +2,8 @@
  * This file is part of Hercules.
  * http://herc.ws - http://github.com/HerculesWS/Hercules
  *
- * Copyright (C) 2012-2018  Hercules Dev Team
- * Copyright (C)  Athena Dev Teams
+ * Copyright (C) 2012-2020 Hercules Dev Team
+ * Copyright (C) Athena Dev Teams
  *
  * Hercules is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -68,7 +68,7 @@ static bool instance_is_valid(int instance_id)
 /*--------------------------------------
  * name : instance name
  * Return value could be
- * -4 = already exists | -3 = no free instances | -2 = owner not found | -1 = invalid type
+ * -4 = already exists | -2 = owner not found | -1 = invalid type
  * On success return instance_id
  *--------------------------------------*/
 static int instance_create(int owner_id, const char *name, enum instance_owner_type type)
@@ -295,13 +295,6 @@ static int instance_add_map(const char *name, int instance_id, bool usebasename,
 		}
 	}
 
-	//Mimic questinfo
-	VECTOR_INIT(map->list[im].qi_data);
-	VECTOR_ENSURE(map->list[im].qi_data, VECTOR_LENGTH(map->list[m].qi_data), 1);
-	for (i = 0; i < VECTOR_LENGTH(map->list[m].qi_data); i++) {
-		VECTOR_PUSH(map->list[im].qi_data, VECTOR_INDEX(map->list[m].qi_data, i));
-	}
-
 	map->list[im].m = im;
 	map->list[im].instance_id = instance_id;
 	map->list[im].instance_src_map = m;
@@ -453,7 +446,7 @@ static int instance_cleanup_sub(struct block_list *bl, va_list ap)
 			map->quit(BL_UCAST(BL_PC, bl));
 			break;
 		case BL_NPC:
-			npc->unload(BL_UCAST(BL_NPC, bl), true);
+			npc->unload(BL_UCAST(BL_NPC, bl), true, true);
 			break;
 		case BL_MOB:
 			unit->free(bl,CLR_OUTSIGHT);
@@ -518,7 +511,7 @@ static void instance_del_map(int16 m)
 		aFree(map->list[m].zone_mf);
 	}
 
-	quest->questinfo_vector_clear(m);
+	VECTOR_CLEAR(map->list[m].qi_list);
 
 	// Remove from instance
 	for( i = 0; i < instance->list[map->list[m].instance_id].num_map; i++ ) {
@@ -727,6 +720,66 @@ static void instance_check_kick(struct map_session_data *sd)
 	}
 }
 
+/**
+ * Look up existing memorial dungeon of the player and destroy it
+ *
+ * @param sd session data.
+ *
+ */
+static void instance_force_destroy(struct map_session_data *sd)
+{
+	nullpo_retv(sd);
+
+	for (int i = 0; i < instance->instances; ++i) {
+		switch (instance->list[i].owner_type) {
+		case IOT_CHAR:
+		{
+			if (instance->list[i].owner_id != sd->status.account_id)
+				continue;
+			break;
+		}
+		case IOT_PARTY:
+		{
+			int party_id = sd->status.party_id;
+			if (instance->list[i].owner_id != party_id)
+				continue;
+			int j = 0;
+			struct party_data *pt = party->search(party_id);
+			nullpo_retv(pt);
+
+			ARR_FIND(0, MAX_PARTY, j, pt->party.member[j].leader);
+			if (j == MAX_PARTY) {
+				ShowWarning("clif_parse_memorial_dungeon_command: trying to destroy a party instance, while the party has no leader.");
+				return;
+			}
+			if (pt->party.member[j].char_id != sd->status.char_id) {
+				ShowWarning("clif_parse_memorial_dungeon_command: trying to destroy a party instance, from a non party-leader player.");
+				return;
+			}
+			break;
+		}
+		case IOT_GUILD:
+		{
+			int guild_id = sd->status.guild_id;
+			if (instance->list[i].owner_id != guild_id)
+				continue;
+			struct guild *g = guild->search(guild_id);
+			nullpo_retv(g);
+
+			if (g->member[0].char_id != sd->status.char_id) {
+				ShowWarning("clif_parse_memorial_dungeon_command: trying to destroy a guild instance, from a non guild-master player.");
+				return;
+			}
+			break;
+		}
+		default:
+			continue;
+		}
+		instance->destroy(instance->list[i].id);
+		return;
+	}
+}
+
 static void do_reload_instance(void)
 {
 	struct s_mapiterator *iter;
@@ -810,4 +863,5 @@ void instance_defaults(void)
 	instance->set_timeout = instance_set_timeout;
 	instance->valid = instance_is_valid;
 	instance->destroy_timer = instance_destroy_timer;
+	instance->force_destroy = instance_force_destroy;
 }

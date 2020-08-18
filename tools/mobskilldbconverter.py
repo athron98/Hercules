@@ -4,8 +4,8 @@
 # This file is part of Hercules.
 # http://herc.ws - http://github.com/HerculesWS/Hercules
 #
-# Copyright (C) 2018  Hercules Dev Team
-# Copyright (C) 2018  Asheraf
+# Copyright (C) 2018-2020 Hercules Dev Team
+# Copyright (C) 2018 Asheraf
 #
 # Hercules is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -206,7 +206,7 @@ def LoadOldDB(mode, serverpath):
 					continue
 				try:
 					Db[MonsterId][skillidx]['val{}'.format(i)] = int(entry[12 + i])
-				except:
+				except ValueError:
 					Db[MonsterId][skillidx]['val{}'.format(i)] = int(entry[12 + i], 16)
 			Db[MonsterId][skillidx]['Emotion'] = entry[17]
 			Db[MonsterId][skillidx]['ChatMsgID'] = entry[18]

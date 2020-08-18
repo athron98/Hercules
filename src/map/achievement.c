@@ -2,7 +2,7 @@
 * This file is part of Hercules.
 * http://herc.ws - http://github.com/HerculesWS/Hercules
 *
-* Copyright (C) 2017  Hercules Dev Team
+* Copyright (C) 2017-2020 Hercules Dev Team
 * Copyright (C) Smokexyz
 * Copyright (C) Dastgir
 *
@@ -194,6 +194,8 @@ static void achievement_progress_add(struct map_session_data *sd, const struct a
 		// Check if the Achievement is complete.
 		if (achievement->check_complete(sd, ad)) {
 			achievement->validate_achieve(sd, ad->id);
+			if ((ach = achievement->ensure(sd, ad)) == NULL)
+				return;
 			ach->completed_at = time(NULL);
 		}
 
@@ -232,6 +234,8 @@ static void achievement_progress_set(struct map_session_data *sd, const struct a
 
 		if (achievement->check_complete(sd, ad)) {
 			achievement->validate_achieve(sd, ad->id);
+			if ((ach = achievement->ensure(sd, ad)) == NULL)
+				return;
 			ach->completed_at = time(NULL);
 		}
 
@@ -301,6 +305,9 @@ static int achievement_validate_type(struct map_session_data *sd, enum achieveme
 
 	Assert_ret(criteria->goal != 0);
 
+	if (battle_config.feature_enable_achievement == 0)
+		return 0;
+
 	if (type == ACH_QUEST) {
 		ShowError("achievement_validate_type: ACH_QUEST is not handled by this function. (use achievement_validate())\n");
 		return 0;
@@ -357,6 +364,9 @@ static bool achievement_validate(struct map_session_data *sd, int aid, unsigned 
 	nullpo_retr(false, sd);
 	Assert_retr(false, progress > 0);
 	Assert_retr(false, obj_idx < MAX_ACHIEVEMENT_OBJECTIVES);
+
+	if (battle_config.feature_enable_achievement == 0)
+		return false;
 
 	if ((ad = achievement->get(aid)) == NULL) {
 		ShowError("achievement_validate: Invalid Achievement %d provided.", aid);
@@ -760,17 +770,20 @@ static void achievement_validate_refine(struct map_session_data *sd, unsigned in
 	struct item_data *id = NULL;
 
 	nullpo_retv(sd);
-	Assert_retv(idx < MAX_INVENTORY);
+	Assert_retv(idx < sd->status.inventorySize);
 
 	id = itemdb->exists(sd->status.inventory[idx].nameid);
 
 	if (sd->achievements_received == false)
 		return;
 
-	Assert_retv(idx < MAX_INVENTORY);
 	Assert_retv(id != NULL);
 
 	criteria.goal = sd->status.inventory[idx].refine;
+
+	// achievement should not trigger if refine is 0
+	if (criteria.goal == 0)
+		return;
 
 	/* Universal */
 	achievement->validate_type(sd,
@@ -1016,44 +1029,56 @@ static bool achievement_check_title(struct map_session_data *sd, int title_id) {
 	return false;
 }
 
+static void achievement_get_rewards_buffs(struct map_session_data *sd, const struct achievement_data *ad)
+{
+	nullpo_retv(sd);
+	nullpo_retv(ad);
+
+	if (ad->rewards.bonus != NULL)
+		script->run(ad->rewards.bonus, 0, sd->bl.id, 0);
+}
+
+// TODO: kro send items by rodex
+static void achievement_get_rewards_items(struct map_session_data *sd, const struct achievement_data *ad)
+{
+	nullpo_retv(sd);
+	nullpo_retv(ad);
+
+	struct item it = { 0 };
+	it.identify = 1;
+
+	for (int i = 0; i < VECTOR_LENGTH(ad->rewards.item); i++) {
+		it.nameid = VECTOR_INDEX(ad->rewards.item, i).id;
+		int total = VECTOR_INDEX(ad->rewards.item, i).amount;
+
+		//Check if it's stackable.
+		if (!itemdb->isstackable(it.nameid)) {
+			it.amount = 1;
+			for (int j = 0; j < total; ++j)
+				pc->additem(sd, &it, 1, LOG_TYPE_ACHIEVEMENT);
+		} else {
+			it.amount = total;
+			pc->additem(sd, &it, total, LOG_TYPE_ACHIEVEMENT);
+		}
+	}
+}
+
 /**
  * Achievement rewards are given to player
  * @param  sd        session data
  * @param  ad        achievement data
  */
-static void achievement_get_rewards(struct map_session_data *sd, const struct achievement_data *ad) {
-	int i = 0;
-	struct achievement *ach = NULL;
+static bool achievement_get_rewards(struct map_session_data *sd, const struct achievement_data *ad)
+{
+	nullpo_retr(false, sd);
+	nullpo_retr(false, ad);
 
-	nullpo_retv(sd);
-	nullpo_retv(ad);
-
-	if ((ach = achievement->ensure(sd, ad)) == NULL)
-		return;
+	struct achievement *ach = achievement->ensure(sd, ad);
+	if (ach == NULL)
+		return false;
 
 	/* Buff */
-	if (ad->rewards.bonus != NULL)
-		script->run(ad->rewards.bonus, 0, sd->bl.id, 0);
-
-	/* Give Items */
-	for (i = 0; i < VECTOR_LENGTH(ad->rewards.item); i++) {
-		struct item it = { 0 };
-		int total = 0;
-
-		it.nameid = VECTOR_INDEX(ad->rewards.item, i).id;
-		total = VECTOR_INDEX(ad->rewards.item, i).amount;
-
-		it.identify = 1;
-
-		//Check if it's stackable.
-		if (!itemdb->isstackable(it.nameid)) {
-			int j = 0;
-			for (j = 0; j < total; ++j)
-				pc->additem(sd, &it, (it.amount = 1), LOG_TYPE_SCRIPT);
-		} else {
-			pc->additem(sd, &it, (it.amount = total), LOG_TYPE_SCRIPT);
-		}
-	}
+	achievement->get_rewards_buffs(sd, ad);
 
 	ach->rewarded_at = time(NULL);
 
@@ -1062,9 +1087,14 @@ static void achievement_get_rewards(struct map_session_data *sd, const struct ac
 		VECTOR_PUSH(sd->title_ids, ad->rewards.title_id);
 		clif->achievement_send_list(sd->fd, sd);
 	} else {
-		clif->achievement_reward_ack(sd->fd, sd, ad);
 		clif->achievement_send_update(sd->fd, sd, ad); // send update.
+		clif->achievement_reward_ack(sd->fd, sd, ad);
 	}
+
+	/* Give Items */
+	achievement->get_rewards_items(sd, ad);
+
+	return true;
 }
 
 /**
@@ -1073,7 +1103,8 @@ static void achievement_get_rewards(struct map_session_data *sd, const struct ac
  */
 static void achievement_readdb_ranks(void)
 {
-	const char *filename = "db/achievement_rank_db.conf";
+	char filename[256];
+	libconfig->format_db_path("achievement_rank_db.conf", filename, sizeof(filename));
 	struct config_t ar_conf = { 0 };
 	struct config_setting_t *ardb = NULL, *conf = NULL;
 	int entry = 0;
@@ -1751,7 +1782,8 @@ static void achievement_readdb_additional_fields(const struct config_setting_t *
  */
 static void achievement_readb(void)
 {
-	const char *filename = "db/"DBPATH"achievement_db.conf";
+	char filename[256];
+	libconfig->format_db_path(DBPATH"achievement_db.conf", filename, sizeof(filename));
 	struct config_t ach_conf = { 0 };
 	struct config_setting_t *achdb = NULL, *conf = NULL;
 	int entry = 0, count = 0;
@@ -1977,4 +2009,6 @@ void achievement_defaults(void)
 	achievement->init_titles = achievement_init_titles;
 	achievement->check_title = achievement_check_title;
 	achievement->get_rewards = achievement_get_rewards;
+	achievement->get_rewards_buffs = achievement_get_rewards_buffs;
+	achievement->get_rewards_items = achievement_get_rewards_items;
 }

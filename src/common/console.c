@@ -2,8 +2,8 @@
  * This file is part of Hercules.
  * http://herc.ws - http://github.com/HerculesWS/Hercules
  *
- * Copyright (C) 2012-2018  Hercules Dev Team
- * Copyright (C)  Athena Dev Teams
+ * Copyright (C) 2012-2020 Hercules Dev Team
+ * Copyright (C) Athena Dev Teams
  *
  * Hercules is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -23,24 +23,21 @@
 #include "config/core.h" // CONSOLE_INPUT, MAX_CONSOLE_INPUT
 #include "console.h"
 
+#include "common/atomic.h"
 #include "common/cbasetypes.h"
 #include "common/core.h"
+#include "common/ers.h"
+#include "common/memmgr.h"
 #include "common/mmo.h"
+#include "common/mutex.h"
 #include "common/nullpo.h"
 #include "common/showmsg.h"
+#include "common/spinlock.h"
+#include "common/sql.h"
+#include "common/strlib.h"
 #include "common/sysinfo.h"
-
-#ifndef MINICORE
-#	include "common/atomic.h"
-#	include "common/ers.h"
-#	include "common/memmgr.h"
-#	include "common/mutex.h"
-#	include "common/spinlock.h"
-#	include "common/sql.h"
-#	include "common/strlib.h"
-#	include "common/thread.h"
-#	include "common/timer.h"
-#endif
+#include "common/thread.h"
+#include "common/timer.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -325,6 +322,7 @@ static void console_parse_create(char *name, CParseFunc func)
 	nullpo_retv(name);
 	safestrncpy(sublist, name, CP_CMD_LENGTH * 5);
 	tok = strtok(sublist,":");
+	nullpo_retv(tok);
 
 	ARR_FIND(0, VECTOR_LENGTH(console->input->command_list), i, strcmpi(tok, VECTOR_INDEX(console->input->command_list, i)->cmd) == 0);
 
@@ -407,6 +405,10 @@ static void console_parse_sub(char *line)
 	nullpo_retv(line);
 	memcpy(bline, line, 200);
 	tok = strtok(line, " ");
+	if (tok == NULL) {
+		// Ignore empty commands
+		return;
+	}
 
 	ARR_FIND(0, VECTOR_LENGTH(console->input->command_list), i, strcmpi(tok, VECTOR_INDEX(console->input->command_list, i)->cmd) == 0);
 	if (i == VECTOR_LENGTH(console->input->command_list)) {
@@ -420,6 +422,12 @@ static void console_parse_sub(char *line)
 
 	if (cmd->type == CPET_FUNCTION) {
 		tok = strtok(NULL, "");
+		if (tok != NULL) {
+			while (tok[0] == ' ')
+				tok++;
+			if (tok[0] == '\0')
+				tok = NULL;
+		}
 		cmd->u.func(tok);
 		return;
 	}
@@ -447,6 +455,12 @@ static void console_parse_sub(char *line)
 		entry = VECTOR_INDEX(cmd->u.children, i);
 		if (entry->type == CPET_FUNCTION) {
 			tok = strtok(NULL, "");
+			if (tok != NULL) {
+				while (tok[0] == ' ')
+					tok++;
+				if (tok[0] == '\0')
+					tok = NULL;
+			}
 			entry->u.func(tok);
 			return;
 		}
